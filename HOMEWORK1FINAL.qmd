@@ -1,0 +1,237 @@
+---
+title: Homework1
+author: Adaeze Obinelo
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+---
+
+```{r}
+old <- read.csv("2002data.csv")
+new <- read.csv("2022data.csv")
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(ggpubr)
+library(broom)
+library(AICcmodavg)
+```
+
+## Step 1
+
+```{r}
+glimpse(new)
+```
+
+```{r}
+glimpse(old)
+```
+
+```{r}
+head(old)
+```
+
+```{r}
+head(new)
+```
+
+## Step 2
+
+```{r}
+old_no_NA <- na.omit(old)
+new_no_NA <- na.omit(new)
+
+all <- rbind(old_no_NA, new_no_NA)
+
+```
+
+```{r}
+
+names(all)[names(all) == "Daily.Mean.PM2.5.Concentration"] <- "PM"
+names(all)[names(all) == "Daily_OBS_COUNT"] <- "Obs#"
+names(all)[names(all) == "AQS_PARAMETER_CODE"] <- "AQSC"
+names(all)[names(all) == "AQS_PARAMETER_DESC"] <- "AQS_DESC"
+names(all)[names(all) == "DAILY_AQI_VALUE"] <- "AQI_V"
+names(all)[names(all) == "SITE_LATITUDE"] <- "LAT"
+names(all)[names(all) == "SITE_LONGITUDE"] <- "LON"
+
+```
+
+```{r}
+max(all$PM2.5M)
+
+all$year <- format(as.Date(all$Date, format="%m/%d/%Y"),"%Y")
+
+all$month <- format(as.Date(all$Date, format="%m/%d/%Y"),"%m")
+```
+
+## Step 3 
+
+```{r}
+
+library(leaflet)
+
+PM.pal <- colorFactor(
+  palette = c('orange', 'purple'),
+  domain = all$year)
+
+leaflet(all) %>% 
+  addProviderTiles('CartoDB.Positron') %>% 
+  addCircles(lat = ~LAT, lng = ~LON, opacity = 1, fillOpacity = 1, radius = 40)
+
+leaflet(all) %>%
+  addTiles() %>%
+  addCircles(lng = ~LON, lat = ~LAT, 
+             opacity = 0.5, fillOpacity = 0, popup = year, radius = 10, color = ~PM.pal(year)) %>% 
+  addLegend('bottomleft', pal=PM.pal, values=all$year,
+          title='Location by Year', opacity=1)
+```
+
+## Step 4 + 5: 
+
+County Comparisons
+
+```{r}
+
+all %>%
+  ggplot() + 
+  geom_bar(mapping = aes(x = COUNTY, fill = year)) +
+  scale_fill_viridis_d() + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(y = "Count", title = "Barchart of Site Measurement Count by County")
+
+all %>%
+  ggplot() + 
+  geom_point(mapping = aes(x = COUNTY, y = PERCENT_COMPLETE, color = year)) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "Percent complete status of CA county sites")
+
+all %>% 
+  ggplot() + 
+  geom_point(mapping = aes(x = COUNTY, y = PM, color = year)) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "PM2.5 by California state COUNTY")
+
+
+
+```
+
+```{r}
+state.anova <- aov(PM ~ COUNTY + year, data = all)
+summary(state.anova)
+```
+
+```{r}
+wilcox.test(PM~year, data = all)
+
+ggplot(all, aes(x=year, y=PM)) +
+  geom_boxplot(outlier.colour=NA) +
+  coord_cartesian(ylim = c(0, 100)) +
+  xlab(label = "YEAR") +
+  ylab(label = "Mean PM2.5") +
+  labs(title = "PM Value Distribution by Year")
+```
+
+Conclusions:
+
+-   It appears that the mean PM2.5 emissions are lower in 2022 than they were in 2002 when we look at the boxplot of mean PM2.5 by year.
+
+    -   This is supported by the results of the one way anova on mean PM2.5 emission levels by year (statistically significant difference between the two).
+
+        -   This is also supported by the results of the 2-way ANOVA on the PM2.5 emission by county --\> the mean PM2.5 values are statistically significantly different between the two years.
+
+-   Los Angeles appears to contribute the most to the PM2.5 emission values based on the graph of observation counts by county
+
+**Within LA**
+
+```{r}
+LA <- all[all$COUNTY == "Los Angeles",]
+
+LA %>%
+  ggplot() + 
+  geom_point(mapping = aes(x = Site.Name, y = PERCENT_COMPLETE, fill = year)) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "Completion Status (%) of LA County Sites")
+
+LA %>%
+  ggplot() + 
+  geom_bar(mapping = aes(x = Site.Name, fill = year), position = "dodge") +
+  scale_fill_viridis_d() + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(y = "Count", title = "Barchart of Site Measurement Count by Site in LA COunty")
+
+ggplot(LA, aes(x=year, y=PM)) +
+  geom_boxplot(outlier.colour=NA) +
+  coord_cartesian(ylim = c(0, 100)) +
+  xlab(label = "YEAR") +
+  ylab(label = "Mean PM2.5") +
+  labs(title = "PM2.5 Value Distribution for all LA Sites by Year")
+
+ggplot(LA, aes(group= Site.Name, y=PM)) +
+  geom_boxplot(outlier.colour=NA) +
+  coord_cartesian(ylim = c(0, 100)) +
+  ylab(label = "Mean PM2.5") +
+  labs(title = "PM2.5 Distribution per LA Site by Year") +
+  facet_wrap(~year)
+
+ggplot(LA, aes(x=year, y=AQI_V)) +
+  geom_boxplot(outlier.colour=NA) +
+  coord_cartesian(ylim = c(0, 100)) +
+  xlab(label = "YEAR") +
+  ylab(label = "AQI") +
+  labs(title = "AQI Value Parameters for all LA Sites by Year")
+
+LA %>% 
+  ggplot(aes(x = month, y = PM, fill = year)) +
+  stat_summary(fun.data = "mean_sdl", geom = "bar", position = "dodge") +
+  stat_summary(fun.data = "mean_sdl", geom = "errorbar", position = "dodge", width = 0.5) +
+  scale_fill_viridis_d() + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "Mean PM2.5 by Month within LA")
+```
+
+```{r}
+wilcox.test(PM~year, data = LA)
+```
+
+Conclusions:
+
+-   According to the results of the Mannu, there is a statistically significant difference in the mean PM2.5 emission levels in LA betwen 2002 and 2022
+
+    -   looking closer at the data, (Mean PM2.5 by month, and boxplot of mean PM2.5 per year) it appears that the mean PM2.5 in 2002 was around 22 and dropped to around 12.5 in 2022.
+
+    -   Looking at the confidence intervals of the boxplot of mean PM2.5 per year and mean PM2.5 per year but by month, it seems that there was much more variation in data observations in 2002. This is also evident looking at the observation count by LA site- less sites contributed complete observations in 2002 compared to 2022.
+
+**Month-Month (Statewide)**
+
+```{r}
+
+all %>% 
+  ggplot(aes(x = month, y = PM, fill = year)) +
+  stat_summary(fun.data = "mean_sdl", geom = "bar", position = "dodge") +
+  stat_summary(fun.data = "mean_sdl", geom = "errorbar", position = "dodge", width = 0.5) +
+  scale_fill_viridis_d() + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "Mean PM2.5 by Month within California")
+```
+
+```{r}
+ggplot(data = all) +
+  geom_point(mapping = aes(x = month, y = AQI_V, color = year), position = "jitter")+
+  geom_smooth(mapping = aes(x = month, y = PM, color = year)) +
+  labs(title = "AQI Value by Month within California")
+```
+
+```{r}
+month.anova <- aov(PM~month + year, data = all)
+summary(month.anova)
+```
+
+Conclusions:
+
+-   Looking by month, we also see that the mean PM2.5 values in each month of 2002 were lower than their corresponding month in 2022. However, there is more variation in the values in 2002 (as evident by the confidence intervals).
+
+## Answer: 
+
+It seems that overall the mean PM2.5 levels were lower in 2022 than they were in 2022 when we look at the state wide, and LA wide data by year and by month. However owing to the greater variation in data in 2002 compared to 2022, it is also possible that the overall admission data for 2002 may have changed had more sites contributed.
